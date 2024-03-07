@@ -89,7 +89,7 @@ func main() {
 		numSeconds++
 	}
 
-	file, err := os.Create(fmt.Sprintf("data/%s_%s.csv", pair, time.Now().Format("2024-03-05")))
+	file, err := os.Create(fmt.Sprintf("data/%s_%s.csv", pair, time.Now().Format("2006-01-02")))
 	if err != nil {
 		log.Fatal("Failed to create output file")
 	}
