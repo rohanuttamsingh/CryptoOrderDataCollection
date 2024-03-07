@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -25,7 +26,11 @@ type message struct {
 }
 
 func main() {
-	uri := "wss://stream.binance.us:9443/ws/btcusdt@depth10"
+	var pair string
+	flag.StringVar(&pair, "pair", "btcusdt", "pair to collect data on")
+	flag.Parse()
+
+	uri := fmt.Sprintf("wss://stream.binance.us:9443/ws/%s@depth10", pair)
 	var columns [40]string
 	for i := 0; i < 10; i++ {
 		columns[2*i] = fmt.Sprintf("BidPrice%d", i+1)
@@ -33,16 +38,9 @@ func main() {
 		columns[20+2*i] = fmt.Sprintf("AskPrice%d", i+1)
 		columns[20+2*i+1] = fmt.Sprintf("AskVolume%d", i+1)
 	}
-	numOrders := 0
 
 	bestBids := make([][10]order, 24*60*60)
 	bestAsks := make([][10]order, 24*60*60)
-
-	file, err := os.Create(fmt.Sprintf("data_%s.csv", time.Now().Format("2024-03-05")))
-	if err != nil {
-		log.Fatal("Failed to create output file")
-	}
-	writer := csv.NewWriter(file)
 
 	ctx := context.Background()
 	conn, _, err := websocket.Dial(ctx, uri, nil)
@@ -50,6 +48,7 @@ func main() {
 		log.Fatal("Failed to connect to websocket server")
 	}
 
+	numSeconds := 0
 	for {
 		var msg message
 		_, raw, err := conn.Read(ctx)
@@ -62,36 +61,43 @@ func main() {
 		if err = json.Unmarshal(raw, &msg); err != nil {
 			log.Fatal("Failed to unmarshal json")
 		}
+
 		for i, bid := range msg.Bids {
 			if bidPrice, err := strconv.ParseFloat(bid[0], 32); err != nil {
 				log.Fatal("Failed to parse bid price")
 			} else {
-				bestBids[numOrders][i].price = float32(bidPrice)
+				bestBids[numSeconds][i].price = float32(bidPrice)
 			}
 			if bidVolume, err := strconv.ParseFloat(bid[1], 32); err != nil {
 				log.Fatal("Failed to parse bid volume")
 			} else {
-				bestBids[numOrders][i].volume = float32(bidVolume)
+				bestBids[numSeconds][i].volume = float32(bidVolume)
 			}
 		}
 		for i, ask := range msg.Asks {
 			if askPrice, err := strconv.ParseFloat(ask[0], 32); err != nil {
 				log.Fatal("Failed to parse ask price")
 			} else {
-				bestAsks[numOrders][i].price = float32(askPrice)
+				bestAsks[numSeconds][i].price = float32(askPrice)
 			}
 			if askVolume, err := strconv.ParseFloat(ask[1], 32); err != nil {
 				log.Fatal("Failed to parse ask volume")
 			} else {
-				bestAsks[numOrders][i].volume = float32(askVolume)
+				bestAsks[numSeconds][i].volume = float32(askVolume)
 			}
 		}
-		numOrders++
+		numSeconds++
 	}
 
+	file, err := os.Create(fmt.Sprintf("%s_%s.csv", pair, time.Now().Format("2024-03-05")))
+	if err != nil {
+		log.Fatal("Failed to create output file")
+	}
+	writer := csv.NewWriter(file)
+
 	writer.Write(columns[:])
-	rows := make([][]string, numOrders)
-	for i := 0; i < numOrders; i++ {
+	rows := make([][]string, numSeconds)
+	for i := 0; i < numSeconds; i++ {
 		row := make([]string, 40)
 		for j := 0; j < 10; j++ {
 			row[2*j] = fmt.Sprintf("%.2f", bestBids[i][j].price)
