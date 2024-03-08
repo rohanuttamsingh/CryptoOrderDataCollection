@@ -48,6 +48,7 @@ func main() {
 		log.Fatal("Failed to connect to websocket server")
 	}
 
+	log.Printf("Starting data collection for pair %s", pair)
 	numSeconds := 0
 	for {
 		var msg message
@@ -86,6 +87,9 @@ func main() {
 				bestAsks[numSeconds][i].volume = float32(askVolume)
 			}
 		}
+		if numSeconds%60 == 0 {
+			log.Printf("Collected data for second %d", numSeconds)
+		}
 		numSeconds++
 	}
 
@@ -109,4 +113,5 @@ func main() {
 	}
 	writer.WriteAll(rows)
 	writer.Flush()
+	log.Printf("Wrote data to file")
 }
