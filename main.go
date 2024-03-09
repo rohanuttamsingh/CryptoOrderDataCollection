@@ -53,11 +53,9 @@ func main() {
 	for {
 		var msg message
 		_, raw, err := conn.Read(ctx)
-		if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
-			log.Println("Websocket closed connection")
+		if err != nil {
+			log.Println("Error reading message from websocket")
 			break
-		} else if err != nil {
-			log.Fatal("Failed to read message from websocket")
 		}
 		if err = json.Unmarshal(raw, &msg); err != nil {
 			log.Fatal("Failed to unmarshal json")
