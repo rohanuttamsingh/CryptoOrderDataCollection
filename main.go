@@ -39,8 +39,10 @@ func main() {
 		columns[20+2*i+1] = fmt.Sprintf("AskVolume%d", i+1)
 	}
 
-	bestBids := make([][10]order, 24*60*60)
-	bestAsks := make([][10]order, 24*60*60)
+	bestBids := make([][10]order, int(time.Hour.Seconds()))
+	bestAsks := make([][10]order, int(time.Hour.Seconds()))
+
+	startTime := time.Now()
 
 	ctx := context.Background()
 	conn, _, err := websocket.Dial(ctx, uri, nil)
@@ -49,57 +51,61 @@ func main() {
 	}
 
 	log.Printf("Starting data collection for pair %s", pair)
-	numSeconds := 0
-	for {
+	elapsedSeconds := 0
+	for time.Since(startTime) < time.Hour {
 		var msg message
 		_, raw, err := conn.Read(ctx)
 		if err != nil {
 			log.Println("Error reading message from websocket")
 			break
 		}
-		if err = json.Unmarshal(raw, &msg); err != nil {
-			log.Fatal("Failed to unmarshal json")
+
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			log.Println("Failed to unmarshal json")
+			break
 		}
 
 		for i, bid := range msg.Bids {
 			if bidPrice, err := strconv.ParseFloat(bid[0], 32); err != nil {
 				log.Fatal("Failed to parse bid price")
 			} else {
-				bestBids[numSeconds][i].price = float32(bidPrice)
+				bestBids[elapsedSeconds][i].price = float32(bidPrice)
 			}
 			if bidVolume, err := strconv.ParseFloat(bid[1], 32); err != nil {
 				log.Fatal("Failed to parse bid volume")
 			} else {
-				bestBids[numSeconds][i].volume = float32(bidVolume)
+				bestBids[elapsedSeconds][i].volume = float32(bidVolume)
 			}
 		}
+
 		for i, ask := range msg.Asks {
 			if askPrice, err := strconv.ParseFloat(ask[0], 32); err != nil {
 				log.Fatal("Failed to parse ask price")
 			} else {
-				bestAsks[numSeconds][i].price = float32(askPrice)
+				bestAsks[elapsedSeconds][i].price = float32(askPrice)
 			}
 			if askVolume, err := strconv.ParseFloat(ask[1], 32); err != nil {
 				log.Fatal("Failed to parse ask volume")
 			} else {
-				bestAsks[numSeconds][i].volume = float32(askVolume)
+				bestAsks[elapsedSeconds][i].volume = float32(askVolume)
 			}
 		}
-		if numSeconds%60 == 0 {
-			log.Printf("Collected data for second %d", numSeconds)
+
+		if elapsedSeconds%60 == 0 {
+			log.Printf("Collected data for second %d", elapsedSeconds)
 		}
-		numSeconds++
+		elapsedSeconds++
 	}
 
-	file, err := os.Create(fmt.Sprintf("data/%s_%s.csv", pair, time.Now().Format("2006-01-02")))
+	file, err := os.Create(fmt.Sprintf("data/%s_%s.csv", pair, time.Now().Format("2006-01-02_15")))
 	if err != nil {
 		log.Fatal("Failed to create output file")
 	}
 	writer := csv.NewWriter(file)
 
 	writer.Write(columns[:])
-	rows := make([][]string, numSeconds)
-	for i := 0; i < numSeconds; i++ {
+	rows := make([][]string, int(time.Hour.Seconds()))
+	for i := 0; i < int(time.Hour.Seconds()); i++ {
 		row := make([]string, 40)
 		for j := 0; j < 10; j++ {
 			row[2*j] = fmt.Sprintf("%.2f", bestBids[i][j].price)
