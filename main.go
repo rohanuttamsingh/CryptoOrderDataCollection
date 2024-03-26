@@ -44,29 +44,32 @@ func main() {
 	for now := range ticker {
 		resp, err := http.Get(url)
 		if err != nil {
-			log.Fatalf("Error getting order book depth: %v", err)
+			log.Printf("Error getting order book depth: %v", err)
+			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			log.Fatalf("Error reading response body: %v", err)
+			log.Printf("Error reading response body: %v", err)
+			continue
 		}
 		resp.Body.Close()
 
 		var msg message
 		if err := json.Unmarshal(body, &msg); err != nil {
-			log.Fatalf("Failed to unmarshal json: %v", err)
+			log.Printf("Failed to unmarshal json: %v", err)
+			continue
 		}
 
 		for i := 0; i < 10; i++ {
 			bid := msg.Bids[i]
 			if bidPrice, err := strconv.ParseFloat(bid[0], 32); err != nil {
-				log.Fatalf("Failed to parse bid price %v", err)
+				log.Printf("Failed to parse bid price %v", err)
 			} else {
 				bestBids[idx][i].price = float32(bidPrice)
 			}
 			if bidVolume, err := strconv.ParseFloat(bid[1], 32); err != nil {
-				log.Fatalf("Failed to parse bid volume %v", err)
+				log.Printf("Failed to parse bid volume %v", err)
 			} else {
 				bestBids[idx][i].volume = float32(bidVolume)
 			}
@@ -75,12 +78,12 @@ func main() {
 		for i := 0; i < 10; i++ {
 			ask := msg.Asks[i]
 			if askPrice, err := strconv.ParseFloat(ask[0], 32); err != nil {
-				log.Fatalf("Failed to parse ask price %v", err)
+				log.Printf("Failed to parse ask price %v", err)
 			} else {
 				bestAsks[idx][i].price = float32(askPrice)
 			}
 			if askVolume, err := strconv.ParseFloat(ask[1], 32); err != nil {
-				log.Fatalf("Failed to parse ask volume %v", err)
+				log.Printf("Failed to parse ask volume %v", err)
 			} else {
 				bestAsks[idx][i].volume = float32(askVolume)
 			}
