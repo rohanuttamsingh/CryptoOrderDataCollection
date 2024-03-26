@@ -30,7 +30,7 @@ func main() {
 	flag.Parse()
 
 	url := fmt.Sprintf("https://api.binance.us/api/v3/depth?symbol=%s", pair)
-	duration := time.Hour
+	duration := 24 * time.Hour
 
 	bestBids := make([][10]order, int(duration.Seconds()))
 	bestAsks := make([][10]order, int(duration.Seconds()))
@@ -103,7 +103,7 @@ func main() {
 		columns[20+2*i+1] = fmt.Sprintf("AskVolume%d", i+1)
 	}
 
-	file, err := os.Create(fmt.Sprintf("data/%s_%s.csv", pair, time.Now().Format("2006-01-02_15")))
+	file, err := os.Create(fmt.Sprintf("data/%s_%s.csv", pair, time.Now().Format("2006-01-02")))
 	if err != nil {
 		log.Fatalf("Failed to create output file: %v", err)
 	}
