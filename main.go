@@ -1,17 +1,16 @@
 package main
 
 import (
-	"context"
 	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
-
-	"nhooyr.io/websocket"
 )
 
 type order struct {
@@ -27,10 +26,73 @@ type message struct {
 
 func main() {
 	var pair string
-	flag.StringVar(&pair, "pair", "btcusdt", "pair to collect data on")
+	flag.StringVar(&pair, "pair", "BTCUSDT", "pair to collect data on in uppercase")
 	flag.Parse()
 
-	uri := fmt.Sprintf("wss://stream.binance.us:9443/ws/%s@depth10", pair)
+	url := fmt.Sprintf("https://api.binance.us/api/v3/depth?symbol=%s", pair)
+	// duration := time.Hour
+	duration := 10 * time.Second
+
+	bestBids := make([][10]order, int(duration.Seconds()))
+	bestAsks := make([][10]order, int(duration.Seconds()))
+
+	log.Printf("Starting data collection for pair %s", pair)
+
+	startTime := time.Now()
+	ticker := time.Tick(time.Second)
+	idx := 0
+
+	for now := range ticker {
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Fatalf("Error getting order book depth: %v", err)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatalf("Error reading response body: %v", err)
+		}
+		resp.Body.Close()
+
+		var msg message
+		if err := json.Unmarshal(body, &msg); err != nil {
+			log.Fatalf("Failed to unmarshal json: %v", err)
+		}
+
+		for i := 0; i < 10; i++ {
+			bid := msg.Bids[i]
+			if bidPrice, err := strconv.ParseFloat(bid[0], 32); err != nil {
+				log.Fatalf("Failed to parse bid price %v", err)
+			} else {
+				bestBids[idx][i].price = float32(bidPrice)
+			}
+			if bidVolume, err := strconv.ParseFloat(bid[1], 32); err != nil {
+				log.Fatalf("Failed to parse bid volume %v", err)
+			} else {
+				bestBids[idx][i].volume = float32(bidVolume)
+			}
+		}
+
+		for i := 0; i < 10; i++ {
+			ask := msg.Asks[i]
+			if askPrice, err := strconv.ParseFloat(ask[0], 32); err != nil {
+				log.Fatalf("Failed to parse ask price %v", err)
+			} else {
+				bestAsks[idx][i].price = float32(askPrice)
+			}
+			if askVolume, err := strconv.ParseFloat(ask[1], 32); err != nil {
+				log.Fatalf("Failed to parse ask volume %v", err)
+			} else {
+				bestAsks[idx][i].volume = float32(askVolume)
+			}
+		}
+
+		if now.Sub(startTime) >= duration {
+			break
+		}
+		idx++
+	}
+
 	var columns [40]string
 	for i := 0; i < 10; i++ {
 		columns[2*i] = fmt.Sprintf("BidPrice%d", i+1)
@@ -39,79 +101,21 @@ func main() {
 		columns[20+2*i+1] = fmt.Sprintf("AskVolume%d", i+1)
 	}
 
-	bestBids := make([][10]order, int(time.Hour.Seconds()))
-	bestAsks := make([][10]order, int(time.Hour.Seconds()))
-
-	startTime := time.Now()
-
-	ctx := context.Background()
-	conn, _, err := websocket.Dial(ctx, uri, nil)
-	if err != nil {
-		log.Fatal("Failed to connect to websocket server")
-	}
-
-	log.Printf("Starting data collection for pair %s", pair)
-	elapsedSeconds := 0
-	for time.Since(startTime) < time.Hour {
-		var msg message
-		_, raw, err := conn.Read(ctx)
-		if err != nil {
-			log.Println("Error reading message from websocket")
-			break
-		}
-
-		if err := json.Unmarshal(raw, &msg); err != nil {
-			log.Println("Failed to unmarshal json")
-			break
-		}
-
-		for i, bid := range msg.Bids {
-			if bidPrice, err := strconv.ParseFloat(bid[0], 32); err != nil {
-				log.Fatal("Failed to parse bid price")
-			} else {
-				bestBids[elapsedSeconds][i].price = float32(bidPrice)
-			}
-			if bidVolume, err := strconv.ParseFloat(bid[1], 32); err != nil {
-				log.Fatal("Failed to parse bid volume")
-			} else {
-				bestBids[elapsedSeconds][i].volume = float32(bidVolume)
-			}
-		}
-
-		for i, ask := range msg.Asks {
-			if askPrice, err := strconv.ParseFloat(ask[0], 32); err != nil {
-				log.Fatal("Failed to parse ask price")
-			} else {
-				bestAsks[elapsedSeconds][i].price = float32(askPrice)
-			}
-			if askVolume, err := strconv.ParseFloat(ask[1], 32); err != nil {
-				log.Fatal("Failed to parse ask volume")
-			} else {
-				bestAsks[elapsedSeconds][i].volume = float32(askVolume)
-			}
-		}
-
-		if elapsedSeconds%60 == 0 {
-			log.Printf("Collected data for second %d", elapsedSeconds)
-		}
-		elapsedSeconds++
-	}
-
 	file, err := os.Create(fmt.Sprintf("data/%s_%s.csv", pair, time.Now().Format("2006-01-02_15")))
 	if err != nil {
-		log.Fatal("Failed to create output file")
+		log.Fatalf("Failed to create output file: %v", err)
 	}
-	writer := csv.NewWriter(file)
 
+	writer := csv.NewWriter(file)
 	writer.Write(columns[:])
-	rows := make([][]string, int(time.Hour.Seconds()))
-	for i := 0; i < int(time.Hour.Seconds()); i++ {
+	rows := make([][]string, int(duration.Seconds()))
+	for i := 0; i < int(duration.Seconds()); i++ {
 		row := make([]string, 40)
 		for j := 0; j < 10; j++ {
-			row[2*j] = fmt.Sprintf("%.2f", bestBids[i][j].price)
-			row[2*j+1] = fmt.Sprintf("%.2f", bestBids[i][j].volume)
-			row[20+2*j] = fmt.Sprintf("%.2f", bestAsks[i][j].price)
-			row[20+2*j+1] = fmt.Sprintf("%.2f", bestAsks[i][j].volume)
+			row[2*j] = fmt.Sprintf("%.5f", bestBids[i][j].price)
+			row[2*j+1] = fmt.Sprintf("%.5f", bestBids[i][j].volume)
+			row[20+2*j] = fmt.Sprintf("%.5f", bestAsks[i][j].price)
+			row[20+2*j+1] = fmt.Sprintf("%.5f", bestAsks[i][j].volume)
 		}
 		rows[i] = row
 	}
