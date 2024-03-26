@@ -30,8 +30,7 @@ func main() {
 	flag.Parse()
 
 	url := fmt.Sprintf("https://api.binance.us/api/v3/depth?symbol=%s", pair)
-	// duration := time.Hour
-	duration := 10 * time.Second
+	duration := time.Hour
 
 	bestBids := make([][10]order, int(duration.Seconds()))
 	bestAsks := make([][10]order, int(duration.Seconds()))
