@@ -31,15 +31,17 @@ func main() {
 
 	url := fmt.Sprintf("https://api.binance.us/api/v3/depth?symbol=%s", pair)
 	duration := 24 * time.Hour
+	frequency := 5 * time.Second
 
-	bestBids := make([][10]order, int(duration.Seconds()))
-	bestAsks := make([][10]order, int(duration.Seconds()))
+	length := int((duration / frequency).Seconds())
+	bestBids := make([][10]order, length)
+	bestAsks := make([][10]order, length)
 
 	log.Printf("Starting data collection for pair %s", pair)
 
 	startTime := time.Now()
-	ticker := time.Tick(time.Second)
-	idx := 0
+	ticker := time.Tick(frequency)
+	numOrders := 0
 
 	for now := range ticker {
 		resp, err := http.Get(url)
@@ -66,12 +68,12 @@ func main() {
 			if bidPrice, err := strconv.ParseFloat(bid[0], 32); err != nil {
 				log.Printf("Failed to parse bid price %v", err)
 			} else {
-				bestBids[idx][i].price = float32(bidPrice)
+				bestBids[numOrders][i].price = float32(bidPrice)
 			}
 			if bidVolume, err := strconv.ParseFloat(bid[1], 32); err != nil {
 				log.Printf("Failed to parse bid volume %v", err)
 			} else {
-				bestBids[idx][i].volume = float32(bidVolume)
+				bestBids[numOrders][i].volume = float32(bidVolume)
 			}
 		}
 
@@ -80,19 +82,19 @@ func main() {
 			if askPrice, err := strconv.ParseFloat(ask[0], 32); err != nil {
 				log.Printf("Failed to parse ask price %v", err)
 			} else {
-				bestAsks[idx][i].price = float32(askPrice)
+				bestAsks[numOrders][i].price = float32(askPrice)
 			}
 			if askVolume, err := strconv.ParseFloat(ask[1], 32); err != nil {
 				log.Printf("Failed to parse ask volume %v", err)
 			} else {
-				bestAsks[idx][i].volume = float32(askVolume)
+				bestAsks[numOrders][i].volume = float32(askVolume)
 			}
 		}
 
 		if now.Sub(startTime) >= duration {
 			break
 		}
-		idx++
+		numOrders++
 	}
 
 	var columns [40]string
@@ -110,8 +112,8 @@ func main() {
 
 	writer := csv.NewWriter(file)
 	writer.Write(columns[:])
-	rows := make([][]string, int(duration.Seconds()))
-	for i := 0; i < int(duration.Seconds()); i++ {
+	rows := make([][]string, numOrders)
+	for i := 0; i < numOrders; i++ {
 		row := make([]string, 40)
 		for j := 0; j < 10; j++ {
 			row[2*j] = fmt.Sprintf("%.5f", bestBids[i][j].price)
