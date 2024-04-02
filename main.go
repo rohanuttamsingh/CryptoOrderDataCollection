@@ -33,7 +33,7 @@ func main() {
 	duration := 24 * time.Hour
 	frequency := 5 * time.Second
 
-	length := int((duration / frequency).Seconds())
+	length := int(duration.Seconds() / frequency.Seconds())
 	bestBids := make([][10]order, length)
 	bestAsks := make([][10]order, length)
 
